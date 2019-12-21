@@ -2,7 +2,6 @@ export class ErrorCode {
   code: number = 0;
   constructor(code: number) {
     this.code = code;
-    this.getCodeDescription();
   }
   getCodeDescription(): string {
     let description: string;
