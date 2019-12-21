@@ -68,13 +68,15 @@ export default class Devices extends Vue {
   @Prop({ default: [] }) devices: Array<PortInfo>;
   @Prop({ default: false }) showDeviceList: boolean;
   @Prop({ default: null }) error: string | null;
-  @Prop({ default: false }) connected: boolean;
   pending: boolean = false;
   selected: PortInfo = {
     index: 0,
     path: "Select Device"
   };
-
+  get connected() {
+    let connection = this.$store.getters.getConnection;
+    return connection ? true : false;
+  }
   selectDevice(index: number) {
     this.selected = Object.assign(this.selected, this.devices[index], { index: index });
     this.$emit("showDeviceSelectionWindow", false);

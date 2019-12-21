@@ -121,7 +121,7 @@ enum Precision {
 import { Component, Vue, Watch } from "vue-property-decorator";
 @Component
 export default class Controls extends Vue {
-  precision: Precision = Precision.CENTI;
+  precision: Precision = Precision.SINGLE;
   adjustSpeed(amount: number) {
     if (amount < 0) {
       this.$store.commit("DECREASE_SPEED", Math.abs(amount));
