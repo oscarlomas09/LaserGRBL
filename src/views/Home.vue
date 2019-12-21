@@ -8,7 +8,6 @@
         :devices="deviceList"
         :showDeviceList="showDeviceList"
         :error="error"
-        :connected="connection ? true : false"
         @showDeviceSelectionWindow="toggleDeviceWindow"
         @getDevices="getDeviceList"
         @connect="connect"
@@ -18,34 +17,35 @@
       <section class="SideWindow">
         <nav class="SideWindowNav">
           <ul>
-            <li class="SideWindowNav__Tab SideWindowNav__Tab--active">Terminal</li>
-            <li class="SideWindowNav__Tab">Settings</li>
+            <li
+              class="SideWindowNav__Tab"
+              :class="{ 'SideWindowNav__Tab--active': currentWindow === 'terminal' }"
+              @click="currentWindow = 'terminal'"
+            >
+              Terminal
+            </li>
+            <li
+              class="SideWindowNav__Tab"
+              :class="{ 'SideWindowNav__Tab--active': currentWindow === 'settings' }"
+              @click="currentWindow = 'settings'"
+            >
+              Settings
+            </li>
           </ul>
         </nav>
         <div class="Terminal">
-          <div class="Terminal__Actions">
-            <button class="Terminal__Action Terminal__Action--unlock" @click="unlock">
-              Unlock
-            </button>
-            <button class="Terminal__Action Terminal__Action--reset">Reset</button>
-            <button class="Terminal__Action Terminal__Action--status">Status</button>
-          </div>
-          <TerminalOutput class="Terminal__Output" ref="outputWindow" />
-          <hr />
-          <div class="Terminal__CommandLine">
-            <form v-on:submit.prevent="sendCommand" class="Terminal__CommandInput">
-              <input
-                type="text"
-                class="CommandInput"
-                placeholder='"$" for help'
-                v-model="command"
-                :disabled="isFormDisabled"
-              />
-              <button type="submit" class="CommandSend" :disabled="isFormDisabled">
-                {{ isFormDisabled ? ". . ." : "Send" }}
-              </button>
-            </form>
-          </div>
+          <TerminalOutput
+            v-show="currentWindow === 'terminal'"
+            ref="outputWindow"
+            :connected="connection ? true : false"
+            @sendCommand="sanitizeCommand"
+            @unlock="unlock"
+          />
+          <Settings
+            v-show="currentWindow === 'settings'"
+            class="Settings__Output"
+            @settings="querySettings"
+          />
         </div>
       </section>
     </aside>
@@ -60,19 +60,19 @@ import Devices from "@/components/Devices.vue";
 import Controls from "@/components/Controls.vue";
 import Viewport from "@/components/Viewport.vue";
 import TerminalOutput from "@/components/Terminal.vue";
+import Settings from "@/components/Settings.vue";
 @Component({
-  components: { TerminalOutput, Controls, Devices, Viewport }
+  components: { TerminalOutput, Controls, Devices, Viewport, Settings }
 })
 export default class Home extends Vue {
   serialport: Serial = new Serial();
   deviceList: Array<PortInfo> = [];
   showDeviceList: boolean = false;
   error: string | null = null;
-  connection: PortInfo | null = null;
-  command: string = "";
+  currentWindow: string = "terminal";
 
-  get isFormDisabled() {
-    return this.connection ? false : true;
+  get connection() {
+    return this.$store.getters.getConnection;
   }
   get outputWindow() {
     return this.$refs.outputWindow as any;
@@ -99,7 +99,7 @@ export default class Home extends Vue {
       this.serialport
         .connect(device)
         .then(res => {
-          this.connection = device;
+          this.$store.commit("CREATE_CONNECTION", device);
           // subscribe to data events
           if (this.serialport.dataObserver) {
             this.serialport.dataObserver.subscribe(
@@ -121,13 +121,14 @@ export default class Home extends Vue {
         });
     }
   }
+
   disconnect() {
     this.error = null;
     if (this.connection) {
       this.serialport
         .disconnect()
         .then(res => {
-          this.connection = null;
+          this.$store.commit("DESTROY_CONNECTION");
           this.$store.commit("QUEUE_RESPONSE", "<disconnected>");
         })
         .catch(err => {
@@ -135,15 +136,20 @@ export default class Home extends Vue {
         });
     }
   }
-  sendCommand() {
-    if (this.command && this.command.trim() !== "") {
-      this.queueCommand(this.command);
-      this.command = "";
-    }
-  }
   unlock() {
     if (this.connection) {
       this.queueCommand("$X");
+    }
+  }
+  querySettings() {
+    if (this.connection) {
+      this.$store.commit("PROCESSING", true);
+      this.queueCommand("$$");
+    }
+  }
+  sanitizeCommand(command: string) {
+    if (command && command.trim() !== "") {
+      this.queueCommand(command);
     }
   }
   async queueCommand(command: string) {
@@ -254,36 +260,7 @@ export default class Home extends Vue {
   flex-direction: column;
   padding: 0 8px;
 }
-.Terminal__Actions {
-  margin-top: 1em;
-  display: flex;
-  flex-direction: row;
-  justify-content: space-around;
-  z-index: 100;
-}
-.Terminal__Action {
-  width: calc(33% - 8px);
-  outline: none;
-  background: transparent;
-  padding: 5px 8px;
-  font-size: 14px;
-  border: 1px solid white;
-  color: white;
-  border-radius: 3px;
-  opacity: 0.5;
-  transform: scale(1);
-  transition: opacity 100ms, background 100ms, transform 80ms;
-  cursor: pointer;
-
-  &:active {
-    opacity: 0.8;
-    background: $main-color;
-    color: white;
-    border-color: transparent;
-    transform: scale(0.95);
-  }
-}
-.Terminal__Output {
+.Settings__Output {
   flex: 1;
   overflow-x: hidden;
   overflow-y: auto;
@@ -307,66 +284,6 @@ export default class Home extends Vue {
   }
   &::-webkit-scrollbar-corner {
     background-color: transparent;
-  }
-}
-.Terminal__CommandInput {
-  position: relative;
-  width: 100%;
-  padding: 0;
-  margin-top: auto;
-  margin-bottom: 10px;
-  z-index: 10;
-
-  .CommandInput {
-    position: relative;
-    width: 100%;
-    padding: 8px 12px;
-    padding-right: 50px;
-    flex: 1;
-    margin-right: 5px;
-    background-color: lighten($main-color, 2);
-    color: lighten($main-color, 60);
-    border: none;
-    outline: none;
-    border-radius: 50px;
-
-    &::placeholder {
-      color: lighten($main-color, 20);
-    }
-  }
-  .CommandSend {
-    position: absolute;
-    top: 5px;
-    right: 5px;
-    width: 50px;
-    text-align: center;
-    height: calc(100% - 10px);
-    border: none;
-    outline: none;
-    cursor: pointer;
-    text-transform: uppercase;
-    font-weight: 100;
-    color: white;
-    background-color: $accent-color;
-    text-shadow: 1px 1px 5px darken($accent-color, 10);
-    box-shadow: 0px 3px 13px darken($accent-color, 25);
-    font-size: 10px;
-    border-radius: 50px;
-
-    &:hover {
-      background-color: darken($accent-color, 5);
-    }
-    &:active {
-      background-color: darken($accent-color, 8);
-      transform: scale(0.98);
-      box-shadow: 0px 0px 0px transparent;
-    }
-    &:disabled {
-      background-color: lighten($main-color, 10);
-      box-shadow: none;
-      opacity: 0.75;
-      cursor: default;
-    }
   }
 }
 </style>
